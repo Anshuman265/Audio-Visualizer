@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio visualizer</title>
+    <style>
+        body {
+  background-color: black;
+  font-family: Arial;
+}
+
+* {
+  overflow: hidden;
+}
+
+#canvas {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+audio {
+  position: fixed;
+  left: 10px;
+  bottom: -80px;
+  width: calc(100% - 20px);
+  opacity: 0.2;
+  transition: all 0.5s;
+}
+
+#content:hover audio {
+  opacity: 0.8;
+  bottom: 10px;
+}
+
+div#top-toolbar {
+  z-index: 100;
+  text-align: center;
+  font-size: 1em;
+  position: fixed;
+  transform: translate(0px, -80px);
+  user-select: none;
+  opacity: 0.8;
+  transition: all 0.5s;
+  height: 60px;
+  width: auto;
+}
+
+div#top-toolbar * {
+  display: inline-block;
+}
+
+#content:hover div#top-toolbar {
+  transform: translate(0px, 0px);
+}
+
+div#top-toolbar div {
+  background-color: white;
+  height: 16px;
+  padding: 6px 10px;
+  font-size: 1em;
+  transition: all 0.5s;
+  border-radius: 2px;
+  box-shadow: 0px 0px 1px 0px black;
+  cursor: pointer;
+}
+
+div#top-toolbar *:hover {
+  background-color: #ddd;
+  box-shadow: 0px 0px 2px 0px black;
+}
+
+div#top-toolbar *:active {
+  background-color: #aaa;
+  box-shadow: 0px 0px 2px 1px black;
+}
+
+select#mode {
+  background-color: white;
+  width: 120px;
+  height: 1.79em;
+  padding: 6px;
+  font-size: 1em;
+  transition: all 0.5s;
+  border: none;
+  border-radius: 2px;
+  box-shadow: 0px 0px 1px 0px black;
+  outline: none;
+  transform: translate(0px, -0.5em);
+}
+
+html, body {
+  height: 100%;
+}
+
+.toggle {
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 20px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transform: translate3d(0, 0, 0);
+}
+
+.toggle:before {
+  content: "";
+  position: relative;
+  top: 3px;
+  left: 3px;
+  width: 34px;
+  height: 14px;
+  display: block;
+  background: #9A9999;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+.toggle span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  display: block;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 3px 8px rgba(154, 153, 153, 0.5);
+  transition: all 0.2s ease;
+}
+.toggle span:before {
+  content: "";
+  position: absolute;
+  display: block;
+  margin: -18px;
+  width: 56px;
+  height: 56px;
+  background: rgba(79, 46, 220, 0.5);
+  border-radius: 50%;
+  transform: scale(0);
+  opacity: 1;
+  pointer-events: none;
+}
+
+#cbx:checked + .toggle:before {
+  background: #947ADA;
+}
+#cbx:checked + .toggle span {
+  background: #4F2EDC;
+  transform: translateX(20px);
+  transition: all 0.2s cubic-bezier(0.8, 0.4, 0.3, 1.25), background 0.15s ease;
+  box-shadow: 0 3px 8px rgba(79, 46, 220, 0.2);
+}
+#cbx:checked + .toggle span:before {
+  transform: scale(1);
+  opacity: 0;
+  transition: all 0.4s ease;
+}
+
+.center {
+  position: absolute;
+  top: calc(50% - 10px);
+  left: calc(50% - 20px);
+}
+
+.mic-cbx {
+  transform: translate(0px, 0em);
+  user-select: none;
+  height: 12px;
+}
+
+.mic-cbx label {
+  transform: translate(0px, -0.15em);
+}
+
+video {
+  right: 1px;
+  top: 1px;
+  position: fixed;
+  border: 1px solid white;
+}
+    </style>
+</head>
+<body>
+    <div id="content">
+        <!--input type="file" id="file" accept="audio/*"!-->
+        <video id="video" width="240px" height="135px" autoplay></video>
+        <div id="top-toolbar">
+          <div id="file">Select a file...</div>
+          <div id="capture">Capture Audio</div>
+          <div class="mic-cbx">
+            <label for="cbx">Microphone</label>
+            <input type="checkbox" id="cbx" style="display:none" checked=true />
+            <label for="cbx" class="toggle"><span></span></label>
+          </div>
+          <select id="mode">
+            <option value="waveform">Waveform</option>
+            <option value="bar-graph">Bar Graph</option>
+            <option value="rgb-bar-graph">RGB Bar Graph</option>
+            <option value="spectrogram">Spectogarm</option>
+          </select>
+        </div>
+        <canvas id="canvas"></canvas>
+        <audio id="audio" controls></audio>
+      </div>
+      <script>
+        // https://www.myinstants.com/media/sounds/ylvis-cute.mp3 //
+window.it = 0
+window.onload = function () {
+    // Elements
+    var audio = document.getElementById("audio");
+    var video = document.getElementById("video");
+    var canvas = document.getElementById("canvas");
+    var WIDTH = (canvas.width = window.innerWidth);
+    var HEIGHT = (canvas.height = window.innerHeight);
+
+    var ctx = canvas.getContext("2d");
+
+    var mouseX = 0;
+    var mouseY = 0;
+    window.addEventListener("mousemove", function (e) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+    });
+
+    // Local File //
+    var fbtn = document.getElementById("file");
+    fbtn.addEventListener("click", function () {
+        var file = document.createElement("input");
+        file.type = "file";
+        file.accept = "audio/*";
+        file.click();
+        file.onchange = function () {
+            var files = this.files;
+
+            audio.src = URL.createObjectURL(files[0]);
+            audio.load();
+            audio.play();
+            audio.style.display = "block";
+            visualize(0, audio);
+        };
+    });
+
+    // Desktop Audio //
+    var captureBtn = document.getElementById("capture");
+    captureBtn.addEventListener("click", async function () {
+        var desktopStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+        });
+        video.src = desktopStream;
+        video.muted = true;
+        audio.style.display = "none";
+        visualize(1, desktopStream);
+    });
+
+    // Microphone //
+    var cbx = document.getElementById("cbx");
+    async function mic() {
+        var micStream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
+        audio.style.display = "none";
+        visualize(2, micStream);
+        cbx.addEventListener("change", async function () {
+            var micMode = cbx.checked;
+            if (micMode) {
+                audio.style.display = "none";
+                visualize(2, micStream);
+            }
+        });
+    }
+
+    mic();
+
+    function visualize(from, source) {
+        var context = new AudioContext();
+        var select = document.querySelector("select#mode");
+        if (0 == from) {
+            var src = context.createMediaElementSource(source);
+        } else if (1 == from) {
+            var src = context.createMediaStreamSource(source);
+        } else if (2 == from) {
+            var src = context.createMediaStreamSource(source);
+        }
+        console.log(src);
+        var analyser = context.createAnalyser();
+        var listen = context.createGain();
+
+        src.connect(listen);
+        listen.connect(analyser);
+        if (from == 0) {
+            analyser.connect(context.destination);
+        }
+        analyser.fftSize = 2 ** 12;
+        var frequencyBins = analyser.fftSize / 2;
+
+        var bufferLength = analyser.frequencyBinCount;
+        console.log(bufferLength);
+        let dataArray = new Uint8Array(bufferLength);
+        var dataHistory = [];
+
+        renderFrame();
+
+        function renderFrame() {
+            requestAnimationFrame(renderFrame);
+
+            analyser.smoothingTimeConstant = 0.5;
+
+            if (from == 2) {
+                if (cbx.checked) {
+                    listen.gain.setValueAtTime(1, context.currentTime);
+                } else {
+                    listen.gain.setValueAtTime(0, context.currentTime);
+                }
+            } else {
+                listen.gain.setValueAtTime(1, context.currentTime);
+            }
+
+            var WIDTH = (canvas.width = window.innerWidth);
+            var HEIGHT = (canvas.height = window.innerHeight);
+            var sliceWidth = WIDTH * 1.0 / bufferLength;
+
+            var x = 0;
+            var scale = Math.log(frequencyBins - 1) / WIDTH;
+
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#fff";
+            ctx.beginPath();
+            ctx.moveTo(mouseX, 0);
+            ctx.lineTo(mouseX, HEIGHT);
+            ctx.stroke();
+            ctx.closePath();
+
+            let mouseHz = -10 / Math.log((mouseX / WIDTH)) / (Math.log(441000 / 2 - 1) / WIDTH)
+
+            if (select.value == "bar-graph") {
+                analyser.getByteFrequencyData(dataArray);
+                for (var i = 0; i < bufferLength; i++) {
+                    let x = Math.floor(Math.log(i) / scale);
+                    barHeight = dataArray[i];
+                    /* var r = barHeight + (25 * (i/bufferLength));
+                             var g = 250 * (i/bufferLength);
+                             var b = 50; */
+                    var h = 300 - barHeight * 300 / 255;
+                    var s = 100 + "%";
+                    var l = barHeight < 64 ? barHeight * 50 / 64 + "%" : "50%";
+                    ctx.fillStyle = "hsl(" + h + "," + s + "," + l + ")";
+                    // ctx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+                    ctx.fillRect(
+                        x,
+                        HEIGHT - barHeight * HEIGHT / 255,
+                        Math.floor(Math.log(i + 1) / scale) - Math.floor(Math.log(i) / scale),
+                        HEIGHT
+                    );
+                }
+            } else if (select.value == "waveform") {
+                analyser.getByteFrequencyData(dataArray);
+                let start = 0 //dataArray.find(a=> Math.max.apply('',dataArray));
+                analyser.getByteTimeDomainData(dataArray);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = "#fff";
+                ctx.beginPath();
+                x = 0;
+                for (var i = start; i < bufferLength; i++) {
+                    var v = dataArray[i] / 128.0;
+                    var y = v * HEIGHT / 2;
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+
+                    x = i * sliceWidth //frequencyBins/analyser.sampleRate;
+                }
+                ctx.lineTo(WIDTH, dataArray[0] / 128.0 * HEIGHT / 2);
+                ctx.stroke();
+            } else if (select.value == "rgb-bar-graph") {
+                //ctx.globalCompositeOperation = "hue";
+                analyser.getByteFrequencyData(dataArray);
+                var imgData = ctx.createImageData(WIDTH, HEIGHT);
+                // for (var i = 0; i < bufferLength; i += 2) {
+                //   let x = i / 3 *  WIDTH / bufferLength;
+                //   var r = dataArray[i];
+                //   var g = dataArray[i + 1];
+                //   var b = dataArray[i + 2];
+                for (j = 0; j < imgData.data.length; j += 4) {
+                    let y = j / 4 / WIDTH;
+                    let x = Math.floor(((j / 4) % WIDTH) * bufferLength / WIDTH);
+                    imgData.data[j + 0] =
+                        255 - dataArray[x] <= y * (255 / HEIGHT) ? dataArray[x] : 0;
+                    imgData.data[j + 1] =
+                        255 - dataArray[x + 1] <= y * (255 / HEIGHT) ? dataArray[x + 1] : 0;
+                    imgData.data[j + 2] =
+                        255 - dataArray[x + 2] <= y * (255 / HEIGHT) ? dataArray[x + 2] : 0;
+                    imgData.data[j + 3] = 255;
+                }
+                ctx.putImageData(imgData, 0, 0);
+                // ctx.fillStyle = "rgb(" + r + "," + 0 + "," + 0 + ")";
+                // ctx.fillRect(x, HEIGHT - (r * HEIGHT / 255), 1, HEIGHT);
+                // ctx.fillStyle = "rgb(" + 0 + "," + g + "," + 0 + ")";
+                // ctx.fillRect(x, HEIGHT - (g * HEIGHT / 255), 1, HEIGHT);
+                // ctx.fillStyle = "rgb(" + 0 + "," + 0 + "," + b + ")";
+                // ctx.fillRect(x, HEIGHT - (b * HEIGHT / 255), 1, HEIGHT);
+                // }
+            } else {
+                if (typeof (a)) {
+                    analyser.getByteFrequencyData(dataArray);
+                    if (window.it % 2 == 0) dataHistory.unshift(new Uint8Array(dataArray));
+                    window.it++
+                }
+                if (dataHistory.length > 32) {
+                    dataHistory.pop();
+                }
+                for (let j = 0; j < dataHistory.length; j++) {
+                    for (var i = 0; i < bufferLength; i++) {
+                        let x = Math.floor(Math.log(i) / scale);
+                        barHeight = dataHistory[j][i];
+                        /* var r = barHeight + (25 * (i/bufferLength));
+                               var g = 250 * (i/bufferLength);
+                               var b = 50; */
+                        var h = 300 - barHeight * 300 / 255;
+                        var s = 100 + "%";
+                        var l = barHeight < 64 ? barHeight * 50 / 64 + "%" : "50%";
+                        ctx.fillStyle = "hsl(" + h + "," + s + "," + l + ")";
+                        // ctx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+                        ctx.fillRect(
+                            x,
+                            HEIGHT / dataHistory.length * j,
+                            Math.floor(Math.log(i + 1) / scale) -
+                            Math.floor(Math.log(i) / scale),
+                            HEIGHT * j +
+                            1 / dataHistory.length -
+                            HEIGHT * j / dataHistory.length
+                        );
+                    }
+                }
+            }
+
+            ctx.textBaseline = "bottom";
+            ctx.textAlign = "left";
+            ctx.font = "16px Courier";
+            ctx.fillStyle = "white";
+            ctx.fillText(mouseHz + " Hz",
+                mouseX,
+                mouseY
+            );
+        }
+    }
+}
+      </script>
+</body>
+</html>
